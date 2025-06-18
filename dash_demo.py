@@ -343,7 +343,7 @@ app.layout = html.Div([
                 id='table_previous',
                 columns=[
                     {"name": "Previous State", "id": "previous_state"},
-                    {"name": "Count", "id": "count", "type": "numeric"},
+                    {"name": "Weighted Count", "id": "weighted_counts", "type": "numeric"},
                     {"name": "Percentage of Total", "id": "percentage", "type": "numeric", "format": {'specifier': '.1f'}}
                 ],
                 data=[],
@@ -363,7 +363,7 @@ app.layout = html.Div([
                 id='table_current',
                 columns=[
                     {"name": "Current State", "id": "current_state"},
-                    {"name": "Count", "id": "count", "type": "numeric"},
+                    {"name": "Weighted Count", "id": "weighted_counts", "type": "numeric"},
                     {"name": "Percentage of Total", "id": "percentage", "type": "numeric", "format": {'specifier': '.1f'}}
                 ],
                 data=[],
@@ -508,4 +508,5 @@ def update_dashboard(selected_sex, selected_age, selected_edu, selected_marital_
     return map_previous, map_current, fig, fig2, wcounts_table_previous2.to_dict('records'), wcounts_table_current2.to_dict('records')
 
 if __name__ == "__main__":
-    app.run_server(jupyter_mode="tab", debug=True)
+    app.run_server(jupyter_mode="tab", debug=True, port = 8071)
+
