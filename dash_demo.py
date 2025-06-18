@@ -1,6 +1,6 @@
 #Draft of script to create dashboards in Dash
-#started June 13, 2025, last edit June 16, 2025
-#output: bar charts, tables, no map
+#started June 13, 2025, last edit June 17, 2025
+# uses weights
 
 
 import pandas as pd
@@ -9,6 +9,11 @@ import plotly.express as px
 from dash import Dash, Input, Output, dcc, html, dash_table
 
 df = pd.read_csv("df_inter_state.csv")
+
+
+####################################################################
+################ Variable Recode Section ###########################
+
 
 # Recode education variable
 def edugroups(series): 
@@ -48,6 +53,20 @@ def agegroup (series):
         
 df['age2']=df['age'].apply(agegroup)
 
+# Recode marital status variable
+def maritalgroup (series):
+    if series in ['Divorced', 'Separated']:
+        return "Divorced/Separated"
+    elif series == 'Married':
+        return 'Married'
+    elif series == 'Never Married':
+        return 'Never Married'
+    elif series == 'Widowed':
+        return 'Widowed'
+    else:
+        return 'Other' 
+
+df['marital_status2']=df['marital_status'].apply(maritalgroup)
 
 # Recode current_state using two letter abbreviation
 
@@ -231,6 +250,10 @@ state_abbrev_mapping(df = df,
                      new_col = 'previous_state2',
                      case = 'upper')
 
+
+####################################################################
+################ Dash Layout and Dropdowns #########################
+
 # Style settings
 external_stylesheets = [
     {"href": ("https://fonts.googleapis.com/css2?"
@@ -240,11 +263,11 @@ external_stylesheets = [
 ]
 
 app = Dash(__name__, external_stylesheets=external_stylesheets)
-server = app.server
+    server = app.server
 
 # Layout
 app.layout = html.Div([
-    html.H1("Counts of Movers"),
+    html.H1("Weighted Counts of Movers by Previous and Current State of Residence"),
 
     html.Div([
         html.Label('Select Sex:'),
@@ -307,12 +330,13 @@ app.layout = html.Div([
             dcc.Graph(id='map_previous', style={'display': 'inline-block'}), 
             dcc.Graph(id='map_current', style={'display': 'inline-block'}),
         ]),
+        html.Br(),
         html.Div([
-            dcc.Graph(id='bar-chart', style={'display': 'inline-block'}),
+            dcc.Graph(id='bar-chart-previous', style={'display': 'inline-block'}),
             dcc.Graph(id='bar-chart-current', style={'display': 'inline-block'}),
         ])
     ]),
-
+    html.Br(),
     html.Div([
         html.Div([
             dash_table.DataTable(
@@ -345,14 +369,14 @@ app.layout = html.Div([
                 data=[],
                 sort_action="native",
                 style_header={'fontWeight': 'bold'},
-                style_cell={'textAlign': 'left'},
+                style_cell={'textAlign': 'left', 'margin-left': 'auto'},
                 style_data_conditional=[
                     {'if': {'filter_query': '{current_state} = "Total"'},
                         'fontWeight': 'bold',
                         'backgroundColor': '#f9f9f9'}
                 ]
             )
-        ], style={'width': '30%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginRight': '5%', 'marginLeft': '5%'})
+        ], style={'width': '30%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginRight': '5%', 'marginLeft': '12%'})
     ])
 ])
 
@@ -361,7 +385,7 @@ app.layout = html.Div([
 @app.callback(
     Output('map_previous', 'figure'),
     Output('map_current', 'figure'),
-    Output('bar-chart', 'figure'),
+    Output('bar-chart-previous', 'figure'),
     Output('bar-chart-current', 'figure'),
     Output('table_previous', 'data'),
     Output('table_current', 'data'),
@@ -374,111 +398,114 @@ app.layout = html.Div([
 def update_dashboard(selected_sex, selected_age, selected_edu, selected_marital_status):
     if not selected_sex or not selected_age or not selected_edu or not selected_marital_status:
         empty_fig = px.bar(title="Please select at least one option in each dropdown.")
-        return empty_fig, empty_fig, [], []
+        return empty_fig, empty_fig, empty_fig, empty_fig, [], []
         
     filtered_df = df[
         df['sex'].isin(selected_sex) & 
         df['age2'].isin(selected_age) &
         df['education2'].isin(selected_edu) &
-        df['marital_status'].isin(selected_marital_status)
+        df['marital_status2'].isin(selected_marital_status)
     ]
 
     if filtered_df.empty:
         empty_fig = px.bar(title="No data matches the selected filters.")
         return empty_fig, empty_fig, [], []
 
-    # create counts for bar chart: Previous State
-    counts_graph=filtered_df.groupby('previous_state').size().reset_index(name='count').sort_values(by='count', ascending=False)
-    # previous code: counts = filtered_df['previous_state'].value_counts().reset_index()
-    counts_graph.columns = ['previous_state', 'count']
+    # Creation of Bar Chart: Previous State
+    
+    # Sum weights by previous_state
+    wcounts_graph_previous = filtered_df.groupby('previous_state')['person_weight'].sum().reset_index(name='weighted_counts').sort_values(by='weighted_counts', ascending=False)
+    # Rename columns
+    wcounts_graph_previous.columns = ['previous_state', 'weighted_counts']
 
-    #set up bar chart Previous State
+     # Set up bar chart for previous state
     fig = px.bar(
-        counts_graph,
+        wcounts_graph_previous,
         x='previous_state',
-        y='count',
-        labels={'count': 'Count', 'previous_state': 'Previous State'},
-        title=f"Count by Previous State for {selected_sex}, {selected_age}, {selected_edu}, {selected_marital_status}"
+        y='weighted_counts',
+        labels={'weighted_counts': 'Weighted Counts', 'previous_state': 'Previous State'},
+        #title=f"Count by Previous State for {selected_sex}, {selected_age}, {selected_edu}, {selected_marital_status}"
         )
     fig.update_xaxes(categoryorder='category ascending') # use total descending if sort by value
 
-    # create counts for bar chart 2: Current State
-    counts_graph_current=filtered_df.groupby('current_state').size().reset_index(name='count').sort_values(by='count', ascending=False)
-    counts_graph_current.columns = ['current_state', 'count']
 
-    #set up bar chart Current State
+    # Sum weights by current state
+    wcounts_graph_current = filtered_df.groupby('current_state')['person_weight'].sum().reset_index(name='weighted_counts').sort_values(by='weighted_counts', ascending=False)
+    wcounts_graph_current.columns = ['current_state', 'weighted_counts']
+
+    # Set up bar chart for current state
     fig2 = px.bar(
-        counts_graph_current,
+        wcounts_graph_current,
         x='current_state',
-        y='count',
-        labels={'count': 'Count', 'current_state': 'Current State'},
-        title=f"Count by Current State for {selected_sex}, {selected_age}, {selected_edu}, {selected_marital_status}"
+        y='weighted_counts',
+        labels={'weighted_counts': 'Weighted Counts', 'current_state': 'Current State'},
+        #title=f"Count by Current State for {selected_sex}, {selected_age}, {selected_edu}, {selected_marital_status}"
         )
     fig2.update_xaxes(categoryorder='category ascending') # use total descending if sort by value
 
-     # Add percentage and total row (for table 1: Previous State)
-    total = counts_graph['count'].sum()
-    counts_table = counts_graph.copy()
-    counts_table['percentage'] = (counts_table['count'] / total * 100).round(1)
+     # Add percentage and total row to weighted counts (for table 1: Previous State)
+    total_previous_w = wcounts_graph_previous['weighted_counts'].sum()
+    wcounts_table_previous = wcounts_graph_previous.copy()
+    wcounts_table_previous['percentage'] = (wcounts_table_previous['weighted_counts'] / total_previous_w * 100).round(1)
 
-    total_row = pd.DataFrame({
+    total_row_previous = pd.DataFrame({
         'previous_state': ['Total'],
-        'count': [total],
+        'weighted_counts': [total_previous_w],
         'percentage': [100.0]
         })
 
-    counts_table = pd.concat([counts_table, total_row], ignore_index=True)
+    wcounts_table_previous2 = pd.concat([wcounts_table_previous, total_row_previous], ignore_index=True)
 
      # Add percentage and total row (for table 2: Current State)
-    total_current = counts_graph_current['count'].sum()
-    counts_table_current = counts_graph_current.copy()
-    counts_table_current['percentage'] = (counts_table_current['count'] / total_current * 100).round(1)
+    total_current_w = wcounts_graph_current['weighted_counts'].sum()
+    wcounts_table_current = wcounts_graph_current.copy()
+    wcounts_table_current['percentage'] = (wcounts_table_current['weighted_counts'] / total_current_w * 100).round(1)
 
     total_row_current = pd.DataFrame({
         'current_state': ['Total'],
-        'count': [total_current],
+        'weighted_counts': [total_current_w],
         'percentage': [100.0]
         })
 
-    counts_table_current = pd.concat([counts_table_current, total_row_current], ignore_index=True)
+    wcounts_table_current2 = pd.concat([wcounts_table_current, total_row_current], ignore_index=True)
 
     # create counts for map: Previous State
-    counts_map=filtered_df.groupby('previous_state2').size().reset_index(name='count2').sort_values(by='count2', ascending=False)
-    counts_map.columns = ['previous_state2', 'count2']
+    wcounts_map_previous=filtered_df.groupby('previous_state2')['person_weight'].sum().reset_index(name='wcount_previous').sort_values(by='wcount_previous', ascending=False)
+    wcounts_map_previous.columns = ['previous_state2', 'wcount_previous']
 
     # create counts for map 2: Current State
-    counts_map_current=filtered_df.groupby('current_state2').size().reset_index(name='count2').sort_values(by='count2', ascending=False)
-    counts_map_current.columns = ['current_state2', 'count2']
+    wcounts_map_current=filtered_df.groupby('current_state2')['person_weight'].sum().reset_index(name='wcount_current').sort_values(by='wcount_current', ascending=False)
+    wcounts_map_current.columns = ['current_state2', 'wcount_current']
     
      # create map for Previous State
     map_previous = go.Figure(data=go.Choropleth(
-        locations=counts_map['previous_state2'],
-        z = counts_map['count2'].astype(float),
+        locations=wcounts_map_previous['previous_state2'],
+        z = wcounts_map_previous['wcount_previous'].astype(float),
         locationmode='USA-states',
         colorscale = 'Reds',
-        colorbar_title = 'Counts'
+        colorbar_title = 'Weighted Counts'
      ))
         
     map_previous.update_layout(
-        title_text = 'Counts by Previous State',
+        title_text = 'Weighted Counts by Previous State',
         geo_scope = 'usa'
     )
          
      # create map for Current State
     map_current = go.Figure(data=go.Choropleth(
-        locations=counts_map_current['current_state2'],
-        z = counts_map_current['count2'].astype(float),
+        locations=wcounts_map_current['current_state2'],
+        z = wcounts_map_current['wcount_current'].astype(float),
         locationmode='USA-states',
         colorscale = 'Reds',
-        colorbar_title = 'Counts'
+        colorbar_title = 'Weighted Counts'
      ))
         
     map_current.update_layout(
-        title_text = 'Counts by Current State',
+        title_text = 'Weighted Counts by Current State',
         geo_scope = 'usa'
     )
     
-    return map_previous, map_current, fig, fig2, counts_table.to_dict('records'), counts_table_current.to_dict('records')
+    return map_previous, map_current, fig, fig2, wcounts_table_previous2.to_dict('records'), wcounts_table_current2.to_dict('records')
 
 if __name__ == "__main__":
     app.run_server(jupyter_mode="tab", debug=True)
