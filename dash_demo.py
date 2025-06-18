@@ -508,5 +508,5 @@ def update_dashboard(selected_sex, selected_age, selected_edu, selected_marital_
     return map_previous, map_current, fig, fig2, wcounts_table_previous2.to_dict('records'), wcounts_table_current2.to_dict('records')
 
 if __name__ == "__main__":
-    app.run_server(jupyter_mode="tab", debug=True, port = 8071)
+    app.run_server(jupyter_mode="tab", debug=True)
 
